@@ -4,10 +4,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from models import Contact
+from schemas import ContactCreate, ContactUpdate
 
 
-def create_contact(db: Session, data):
-    contact = Contact(**data.dict())
+def create_contact(db: Session, data: ContactCreate):
+    contact = Contact(**data.model_dump())
     db.add(contact)
     db.commit()
     db.refresh(contact)
@@ -22,12 +23,14 @@ def get_contact(db: Session, contact_id: int):
     return db.query(Contact).filter(Contact.id == contact_id).first()
 
 
-def update_contact(db: Session, contact_id: int, data):
+def update_contact(db: Session, contact_id: int, data: ContactUpdate):
     contact = get_contact(db, contact_id)
     if contact:
-        for key, value in data.dict().items():
+        update_data = data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
             setattr(contact, key, value)
         db.commit()
+        db.refresh(contact)
     return contact
 
 
@@ -50,10 +53,19 @@ def search_contacts(db: Session, query: str):
 
 
 def upcoming_birthdays(db: Session):
+    contacts = db.query(Contact).all()
     today = date.today()
     next_week = today + timedelta(days=7)
 
-    return db.query(Contact).filter(
-        Contact.birthday >= today,
-        Contact.birthday <= next_week,
-    ).all()
+    result = []
+
+    for contact in contacts:
+        birthday_this_year = contact.birthday.replace(year=today.year)
+
+        if birthday_this_year < today:
+            birthday_this_year = birthday_this_year.replace(year=today.year + 1)
+
+        if today <= birthday_this_year <= next_week:
+            result.append(contact)
+
+    return result
